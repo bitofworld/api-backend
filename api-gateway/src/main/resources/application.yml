@@ -1,6 +1,8 @@
 server:
   port: 8090
 spring:
+  profiles:
+    include: password # 导入application-password.yml(此文件未用git管理)
   cloud:
     gateway:
       default-filters:
@@ -39,4 +41,4 @@ dubbo:
     port: -1
   registry:
     id: nacos-registry
-    address: nacos://119.91.196.3:8848
+    address: nacos://${nacos.url}
