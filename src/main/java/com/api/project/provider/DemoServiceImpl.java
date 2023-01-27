@@ -17,21 +17,23 @@
 package com.api.project.provider;
 
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.DubboService;
 import org.apache.dubbo.rpc.RpcContext;
 
 @DubboService
+@Slf4j
 public class DemoServiceImpl implements DemoService {
 
     @Override
     public String sayHello(String name) {
-        System.out.println("Hello " + name + ", request from consumer: " + RpcContext.getContext().getRemoteAddress());
+        log.info("Hello " + name + ", request from consumer: " + RpcContext.getContext().getRemoteAddress());
         return "Hello " + name;
     }
 
     @Override
     public String sayHello2(String name) {
-        return "api";
+        return "sayHello2";
     }
 
 

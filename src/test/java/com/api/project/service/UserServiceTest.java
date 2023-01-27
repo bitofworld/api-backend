@@ -20,7 +20,6 @@ class UserServiceTest {
     void testAddUser() {
         User user = new User();
         boolean result = userService.save(user);
-        System.out.println(user.getId());
         Assertions.assertTrue(result);
     }
 

@@ -1,11 +1,11 @@
 package com.api.gateway;
 
-import com.api.sdk.utils.SignUtils;
 import com.api.common.model.entity.InterfaceInfo;
 import com.api.common.model.entity.User;
 import com.api.common.service.InnerInterfaceInfoService;
 import com.api.common.service.InnerUserInterfaceInfoService;
 import com.api.common.service.InnerUserService;
+import com.api.sdk.utils.SignUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.dubbo.config.annotation.DubboReference;
 import org.reactivestreams.Publisher;
@@ -65,11 +65,13 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
         log.info("请求来源地址：" + sourceAddress);
         log.info("请求来源地址：" + request.getRemoteAddress());
         ServerHttpResponse response = exchange.getResponse();
+
         // 2. 访问控制 - 黑白名单
         if (!IP_WHITE_LIST.contains(sourceAddress)) {
             response.setStatusCode(HttpStatus.FORBIDDEN);
             return response.setComplete();
         }
+
         // 3. 用户鉴权（判断 ak、sk 是否合法）
         HttpHeaders headers = request.getHeaders();
         String accessKey = headers.getFirst("accessKey");
@@ -77,7 +79,8 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
         String timestamp = headers.getFirst("timestamp");
         String sign = headers.getFirst("sign");
         String body = headers.getFirst("body");
-        // 去数据库中查是否已分配给用户
+
+        // 4. 去数据库中查是否已分配给用户
         User invokeUser = null;
         try {
             invokeUser = innerUserService.getInvokeUser(accessKey);
@@ -87,40 +90,45 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
         if (invokeUser == null) {
             return handleNoAuth(response);
         }
-//        if (!"api".equals(accessKey)) {
-//            return handleNoAuth(response);
-//        }
-        if (Long.parseLong(nonce) > 10000L) {
+
+        // 5. 验证apiClient的随机数nonce
+        if (nonce != null && Long.parseLong(nonce) > 10000L) {
             return handleNoAuth(response);
         }
-        // 时间和当前时间不能超过 5 分钟
-        Long currentTime = System.currentTimeMillis() / 1000;
-        final Long FIVE_MINUTES = 60 * 5L;
-        if ((currentTime - Long.parseLong(timestamp)) >= FIVE_MINUTES) {
+
+        // 6. 时间和当前时间不能超过 5 分钟
+        long currentTime = System.currentTimeMillis() / 1000;
+        final long FIVE_MINUTES = 60 * 5L;
+        if (timestamp != null && (currentTime - Long.parseLong(timestamp)) >= FIVE_MINUTES) {
             return handleNoAuth(response);
         }
-        // 实际情况中是从数据库中查出 secretKey
+
+        // 7. 从数据库中查出 secretKey
         String secretKey = invokeUser.getSecretKey();
         String serverSign = SignUtils.genSign(body, secretKey);
         if (sign == null || !sign.equals(serverSign)) {
             return handleNoAuth(response);
         }
-        // 4. 请求的模拟接口是否存在，以及请求方法是否匹配
+
+        // 8. 查询数据库，模拟接口是否存在，以及请求方法是否匹配
         InterfaceInfo interfaceInfo = null;
         try {
             interfaceInfo = innerInterfaceInfoService.getInterfaceInfo(path, method);
         } catch (Exception e) {
             log.error("getInterfaceInfo error", e);
         }
+
+        log.info("过滤完成,准备处理响应,查询到的用户信息:" + invokeUser);
+        log.info("过滤完成,准备处理响应,查询到的接口信息:" + interfaceInfo);
+
         if (interfaceInfo == null) {
             return handleNoAuth(response);
         }
-        // todo 是否还有调用次数
-        // 5. 请求转发，调用模拟接口 + 响应日志
-        //        Mono<Void> filter = chain.filter(exchange);
-        //        return filter;
-        return handleResponse(exchange, chain, interfaceInfo.getId(), invokeUser.getId());
 
+        // todo 是否还有调用次数
+        // 请求转发，调用模拟接口 + 响应日志
+        // return chain.filter(exchange);
+        return handleResponse(exchange, chain, interfaceInfo.getId(), invokeUser.getId());
     }
 
     /**
@@ -146,7 +154,7 @@ public class CustomGlobalFilter implements GlobalFilter, Ordered {
                             // 拼接字符串
                             return super.writeWith(
                                     fluxBody.map(dataBuffer -> {
-                                        // 7. 调用成功，接口调用次数 + 1 invokeCount
+                                        // 调用成功，接口调用次数 + 1 invokeCount
                                         try {
                                             innerUserInterfaceInfoService.invokeCount(interfaceInfoId, userId);
                                         } catch (Exception e) {
